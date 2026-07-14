@@ -48,32 +48,34 @@ def process_frame(frame):
     h, w, _ = frame.shape
     all_violations = []
 
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (0, 0), (int(0.6 * w), h), (0, 255, 0), -1)
-    cv2.rectangle(overlay, (int(0.6 * w), 0), (w, h), (0, 0, 255), -1)
-    alpha = 0.15
-    frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
+    # Inference runs on the untouched frame; zone markings are drawn after.
+    persons = detect_ppe(frame, model)
 
+    # Overlay text scales with frame width so portrait and landscape both stay readable.
+    ui = max(0.4, min(0.7, w / 900))
+    thick = 1 if ui < 0.55 else 2
+    label_y = int(34 * ui) + 4
+
+    boundary_x = int(0.6 * w)
+    cv2.line(frame, (boundary_x, 0), (boundary_x, h), (0, 0, 255), 2)
     cv2.putText(
         frame,
         "SAFE ZONE",
-        (10, 30),
+        (10, label_y),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
+        ui,
         (0, 255, 0),
-        2,
+        thick,
     )
     cv2.putText(
         frame,
         "HIGH RISK ZONE",
-        (int(0.6 * w) + 10, 30),
+        (boundary_x + 10, label_y),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
+        ui,
         (0, 0, 255),
-        2,
+        thick,
     )
-
-    persons = detect_ppe(frame, model)
 
     person_alerts = []
     for person in persons:
@@ -100,35 +102,44 @@ def process_frame(frame):
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
     if alert != "INFO":
-        reasons = ", ".join([v[1] for v in all_violations])
+        unique_reasons = []
+        for v in all_violations:
+            if v[1] not in unique_reasons:
+                unique_reasons.append(v[1])
+        banner = f"{alert}: {', '.join(unique_reasons)}"
+        banner_color = (0, 255, 255) if alert == "WARNING" else (0, 0, 255)
+        bscale = ui
+        (tw, th), base = cv2.getTextSize(banner, cv2.FONT_HERSHEY_SIMPLEX, bscale, thick)
+        max_tw = w - 20
+        if tw > max_tw:
+            bscale = bscale * max_tw / tw
+            (tw, th), base = cv2.getTextSize(banner, cv2.FONT_HERSHEY_SIMPLEX, bscale, thick)
+        bx, by = 10, h - 10
+        cv2.rectangle(frame, (bx - 6, by - th - base - 6), (bx + tw + 6, by + 4), (0, 0, 0), -1)
         cv2.putText(
             frame,
-            f"{alert}: {reasons}",
-            (20, 40),
+            banner,
+            (bx, by - base),
             cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 0, 255),
-            3,
+            bscale,
+            banner_color,
+            thick,
         )
 
-    cv2.putText(frame, "SAFE", (w - 180, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-    cv2.putText(
-        frame,
-        "WARNING",
-        (w - 180, 55),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
-        (0, 255, 255),
-        2,
-    )
-    cv2.putText(
-        frame,
-        "CRITICAL",
-        (w - 180, 80),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
-        (0, 0, 255),
-        2,
-    )
+    legend = [("SAFE", (0, 255, 0)), ("WARNING", (0, 255, 255)), ("CRITICAL", (0, 0, 255))]
+    legend_scale = 0.85 * ui
+    ly = label_y + int(28 * ui)
+    for text, color in legend:
+        (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, legend_scale, thick)
+        cv2.putText(
+            frame,
+            text,
+            (w - tw - 10, ly),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            legend_scale,
+            color,
+            thick,
+        )
+        ly += int(26 * ui)
 
     return frame, alert, all_violations
