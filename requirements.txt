@@ -1,0 +1,8 @@
+# Core detection pipeline (ultralytics pulls in torch/torchvision)
+ultralytics==8.3.241
+opencv-python==4.12.0.88
+numpy==2.2.6
+
+# Streamlit dashboard (dashboard.py)
+streamlit==1.53.1
+pandas==2.3.3
