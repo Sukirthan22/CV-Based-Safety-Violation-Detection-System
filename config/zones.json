@@ -1,0 +1,32 @@
+{
+  "CAM_DEMO": {
+    "description": "Generated construction-yard demo clip (videos/demo.mp4). Verified against detections on all frames 2026-07-14: elevated feet 100% inside, ground feet 0%.",
+    "zones": [
+      {
+        "name": "scaffold_walkway_near",
+        "type": "AT_HEIGHT",
+        "polygon": [[0.57, 0.50], [0.97, 0.42], [0.97, 0.66], [0.57, 0.72]]
+      },
+      {
+        "name": "scaffold_walkway_far",
+        "type": "AT_HEIGHT",
+        "polygon": [[0.67, 0.26], [0.92, 0.26], [0.92, 0.50], [0.67, 0.50]]
+      }
+    ]
+  },
+  "CAM_STREAM": {
+    "description": "Bridge segment lift over highway (videos/test.mp4). Polygon coordinates are normalized [0,1] relative to frame width/height.",
+    "zones": [
+      {
+        "name": "gantry_walkway",
+        "type": "AT_HEIGHT",
+        "polygon": [[0.0, 0.155], [1.0, 0.155], [1.0, 0.25], [0.0, 0.25]]
+      },
+      {
+        "name": "suspended_segment",
+        "type": "AT_HEIGHT",
+        "polygon": [[0.32, 0.36], [0.61, 0.36], [0.61, 0.505], [0.32, 0.505]]
+      }
+    ]
+  }
+}

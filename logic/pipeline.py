@@ -1,12 +1,14 @@
 from pathlib import Path
 
 import cv2
+import numpy as np
 from ultralytics import YOLO
 
 from logic.alerts import decide_alert_action
-from logic.context import get_person_zone, is_person_at_height
+from logic.context import is_person_at_height
 from logic.perception import detect_ppe
 from logic.rules import evaluate_ppe_rules
+from logic.zones import get_at_height_zones, scale_polygon
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -23,67 +25,66 @@ def get_model():
     return _MODEL
 
 
-def build_contextual_reason(violation, zone, at_height):
+def build_contextual_reason(violation, at_height):
     reasons = []
     if violation == "NO_HELMET":
         reasons.append("Helmet missing")
     if violation == "NO_HARNESS":
         reasons.append("Safety harness missing")
-    if zone == "HIGH_RISK":
-        reasons.append("in HIGH-RISK zone")
     if at_height:
         reasons.append("while working at height")
     return " ".join(reasons)
 
 
-def _event_id_for_person_violation(person_bbox, zone, violation):
+def _event_id_for_person_violation(person_bbox, violation):
     x1, y1, x2, y2 = person_bbox
     qcx = int(((x1 + x2) / 2) // 20)
     qcy = int(((y1 + y2) / 2) // 20)
-    return f"{violation}:{zone}:{qcx}:{qcy}"
+    return f"{violation}:{qcx}:{qcy}"
 
 
-def process_frame(frame):
+def process_frame(frame, camera_id="CAM_STREAM"):
     model = get_model()
     h, w, _ = frame.shape
     all_violations = []
 
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (0, 0), (int(0.6 * w), h), (0, 255, 0), -1)
-    cv2.rectangle(overlay, (int(0.6 * w), 0), (w, h), (0, 0, 255), -1)
-    alpha = 0.15
-    frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
-
-    cv2.putText(
-        frame,
-        "SAFE ZONE",
-        (10, 30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
-        (0, 255, 0),
-        2,
-    )
-    cv2.putText(
-        frame,
-        "HIGH RISK ZONE",
-        (int(0.6 * w) + 10, 30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
-        (0, 0, 255),
-        2,
-    )
-
+    # Inference runs on the untouched frame; overlays are drawn after.
     persons = detect_ppe(frame, model)
 
+    # Overlay text scales with frame width so portrait and landscape both stay readable.
+    ui = max(0.4, min(0.7, w / 900))
+    thick = 1 if ui < 0.55 else 2
+    label_y = int(34 * ui) + 4
+
+    at_height_zones = get_at_height_zones(camera_id)
+    if at_height_zones:
+        for zone_cfg in at_height_zones:
+            pts = scale_polygon(zone_cfg["polygon"], (w, h))
+            cv2.polylines(
+                frame,
+                [np.array(pts, dtype=np.int32)],
+                isClosed=True,
+                color=(0, 165, 255),
+                thickness=1,
+            )
+            zx, zy = pts[0]
+            cv2.putText(
+                frame,
+                "AT HEIGHT",
+                (zx + 4, zy + int(16 * ui)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.75 * ui,
+                (0, 165, 255),
+                1,
+            )
     person_alerts = []
     for person in persons:
-        zone = get_person_zone(person, w)
-        at_height = is_person_at_height(person["bbox"], h)
-        violations = evaluate_ppe_rules(person, zone, at_height)
+        at_height = is_person_at_height(person["bbox"], (h, w), camera_id)
+        violations = evaluate_ppe_rules(person, at_height)
         person_violations = []
         for sev, violation in violations:
-            reason = build_contextual_reason(violation, zone, at_height)
-            event_id = _event_id_for_person_violation(person["bbox"], zone, violation)
+            reason = build_contextual_reason(violation, at_height)
+            event_id = _event_id_for_person_violation(person["bbox"], violation)
             person_violations.append((sev, violation, reason, event_id))
         all_violations.extend(person_violations)
         person_alerts.append(decide_alert_action(person_violations))
@@ -100,35 +101,44 @@ def process_frame(frame):
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
     if alert != "INFO":
-        reasons = ", ".join([v[1] for v in all_violations])
+        unique_reasons = []
+        for v in all_violations:
+            if v[1] not in unique_reasons:
+                unique_reasons.append(v[1])
+        banner = f"{alert}: {', '.join(unique_reasons)}"
+        banner_color = (0, 255, 255) if alert == "WARNING" else (0, 0, 255)
+        bscale = ui
+        (tw, th), base = cv2.getTextSize(banner, cv2.FONT_HERSHEY_SIMPLEX, bscale, thick)
+        max_tw = w - 20
+        if tw > max_tw:
+            bscale = bscale * max_tw / tw
+            (tw, th), base = cv2.getTextSize(banner, cv2.FONT_HERSHEY_SIMPLEX, bscale, thick)
+        bx, by = 10, h - 10
+        cv2.rectangle(frame, (bx - 6, by - th - base - 6), (bx + tw + 6, by + 4), (0, 0, 0), -1)
         cv2.putText(
             frame,
-            f"{alert}: {reasons}",
-            (20, 40),
+            banner,
+            (bx, by - base),
             cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 0, 255),
-            3,
+            bscale,
+            banner_color,
+            thick,
         )
 
-    cv2.putText(frame, "SAFE", (w - 180, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-    cv2.putText(
-        frame,
-        "WARNING",
-        (w - 180, 55),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
-        (0, 255, 255),
-        2,
-    )
-    cv2.putText(
-        frame,
-        "CRITICAL",
-        (w - 180, 80),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
-        (0, 0, 255),
-        2,
-    )
+    legend = [("COMPLIANT", (0, 255, 0)), ("WARNING", (0, 255, 255)), ("CRITICAL", (0, 0, 255))]
+    legend_scale = 0.85 * ui
+    ly = label_y + int(28 * ui)
+    for text, color in legend:
+        (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, legend_scale, thick)
+        cv2.putText(
+            frame,
+            text,
+            (w - tw - 10, ly),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            legend_scale,
+            color,
+            thick,
+        )
+        ly += int(26 * ui)
 
     return frame, alert, all_violations

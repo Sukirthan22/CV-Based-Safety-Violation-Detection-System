@@ -69,7 +69,7 @@ def frame_producer(source, fps, state, camera_id, mode):
             cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
             continue
 
-        frame, alert, all_violations = process_frame(frame)
+        frame, alert, all_violations = process_frame(frame, camera_id)
         frame_index += 1
         now = datetime.now()
 
@@ -107,10 +107,17 @@ def frame_producer(source, fps, state, camera_id, mode):
         if events_to_log:
             violations_to_log = [v for v in all_violations if v[3] in events_to_log]
             if violations_to_log:
+                # Severity of the logged batch, not of the whole frame — a
+                # WARNING event must not inherit CRITICAL from bystanders.
+                severity = (
+                    "CRITICAL"
+                    if any(v[0] == "CRITICAL" for v in violations_to_log)
+                    else violations_to_log[0][0]
+                )
                 log_violation(
                     camera_id=camera_id,
                     violations=violations_to_log,
-                    severity=alert,
+                    severity=severity,
                 )
                 for event_id in events_to_log:
                     event_state[event_id]["last_logged_at"] = now
