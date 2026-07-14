@@ -377,7 +377,7 @@ with main_cols[0]:
     st.markdown('<div class="section-title">Live Feed</div>', unsafe_allow_html=True)
     st.image(frame_rgb, channels="RGB", use_container_width=True)
     st.markdown(
-        '<div class="subtitle">Green = Safe Zone, Red = High Risk Zone</div>',
+        '<div class="subtitle">Green = Compliant, Yellow = Warning, Red = Critical</div>',
         unsafe_allow_html=True,
     )
 with main_cols[1]:

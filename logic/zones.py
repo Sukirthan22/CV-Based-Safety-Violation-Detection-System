@@ -1,8 +1,13 @@
+import json
+from pathlib import Path
+
 import cv2
 import numpy as np
 
-SAFE_ZONE = [(50, 50), (600, 50), (600, 400), (50, 400)]
-HIGH_RISK_ZONE = [(650, 50), (1200, 50), (1200, 400), (650, 400)]
+CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "zones.json"
+
+_CONFIG = None
+
 
 def point_in_zone(point, zone):
     return cv2.pointPolygonTest(
@@ -10,3 +15,48 @@ def point_in_zone(point, zone):
         point,
         False
     ) >= 0
+
+
+def _load_config():
+    global _CONFIG
+    if _CONFIG is None:
+        if CONFIG_PATH.exists():
+            with open(CONFIG_PATH, "r", encoding="utf-8") as fh:
+                _CONFIG = json.load(fh)
+        else:
+            _CONFIG = {}
+    return _CONFIG
+
+
+def get_at_height_zones(camera_id):
+    """
+    Returns the list of AT_HEIGHT zone dicts configured for this camera,
+    or None when the camera has no polygon config (caller should fall back
+    to the position heuristic).
+    """
+    camera = _load_config().get(camera_id)
+    if not camera:
+        return None
+    zones = [z for z in camera.get("zones", []) if z.get("type") == "AT_HEIGHT"]
+    return zones or None
+
+
+def scale_polygon(polygon, frame_size):
+    w, h = frame_size
+    return [(int(x * w), int(y * h)) for x, y in polygon]
+
+
+def is_at_height(feet_point, frame_size, camera_id):
+    """
+    Polygon-based elevation test: True iff the feet point lies inside any
+    AT_HEIGHT polygon configured for this camera. Polygons are stored in
+    normalized [0,1] coordinates, so they work at any stream resolution.
+    Returns None when the camera has no AT_HEIGHT config.
+    """
+    zones = get_at_height_zones(camera_id)
+    if zones is None:
+        return None
+    for zone in zones:
+        if point_in_zone(feet_point, scale_polygon(zone["polygon"], frame_size)):
+            return True
+    return False

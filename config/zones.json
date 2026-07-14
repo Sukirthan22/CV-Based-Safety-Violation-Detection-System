@@ -1,0 +1,17 @@
+{
+  "CAM_STREAM": {
+    "description": "Bridge segment lift over highway (videos/test.mp4). Polygon coordinates are normalized [0,1] relative to frame width/height.",
+    "zones": [
+      {
+        "name": "gantry_walkway",
+        "type": "AT_HEIGHT",
+        "polygon": [[0.0, 0.155], [1.0, 0.155], [1.0, 0.25], [0.0, 0.25]]
+      },
+      {
+        "name": "suspended_segment",
+        "type": "AT_HEIGHT",
+        "polygon": [[0.32, 0.36], [0.61, 0.36], [0.61, 0.505], [0.32, 0.505]]
+      }
+    ]
+  }
+}
