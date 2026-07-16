@@ -14,9 +14,9 @@ from logic.pipeline import process_frame
 
 BASE_DIR = Path(__file__).resolve().parent
 
-EVENT_CONFIRM_FRAMES = 5
-EVENT_COOLDOWN_SECONDS = 8
-EVENT_FORGET_FRAMES = 45
+EVENT_CONFIRM_FRAMES = 15
+EVENT_COOLDOWN_SECONDS = 60
+EVENT_FORGET_FRAMES = 120
 
 
 class StreamState:

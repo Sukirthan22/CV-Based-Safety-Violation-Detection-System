@@ -47,6 +47,29 @@
         ]
       },
       {
+        "name": "scaffold_deck_edge",
+        "type": "EDGE",
+        "label": "the scaffold deck",
+        "polygon": [
+          [
+            0.6,
+            0.546
+          ],
+          [
+            0.92,
+            0.595
+          ],
+          [
+            0.92,
+            0.525
+          ],
+          [
+            0.6,
+            0.476
+          ]
+        ]
+      },
+      {
         "name": "scaffold_walkway_1",
         "type": "AT_HEIGHT",
         "polygon": [

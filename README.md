@@ -45,8 +45,8 @@ in [`logic/`](logic/). Safety policy can be changed without retraining.
 | `stream_server.py` | Main entry point. Reads a video file or RTSP stream, runs the pipeline, serves MJPEG at `/stream` and alert state at `/status` (port 8000). |
 | `logic/pipeline.py` | Per-frame orchestration: detect → contextualize → evaluate rules → annotate frame. |
 | `logic/perception.py` | YOLO inference; associates helmets (head region) and harnesses (torso region) to each detected person. |
-| `logic/rules.py` | Violation rules: no helmet → WARNING; no harness at height → CRITICAL. |
-| `config/zones.json` | Per-camera AT_HEIGHT polygons (normalized coordinates) marking elevated work surfaces in the image. |
+| `logic/rules.py` | Violation rules: no helmet → WARNING; standing in an EDGE zone → WARNING; no harness at height → CRITICAL. |
+| `config/zones.json` | Per-camera zone polygons (normalized coordinates): `AT_HEIGHT` elevated work surfaces and `EDGE` open edges. |
 | `tools/draw_zones.py` | Interactive zone editor: manual tracing, one-click SAM-assisted tracing (`--assist`), and review of AI proposals (`--review`). |
 | `tools/propose_zones.py` | AI zone proposal: matches text prompts from `config/zone_prompts.txt` (YOLOE open-vocabulary segmentation) against a frame and writes candidate polygons with `status: "proposed"`. |
 | `next-dashboard/` | Next.js dashboard: live feed, filters, KPIs, incident history from the CSV via `/api/violations`. |
@@ -64,6 +64,24 @@ feet point (bbox bottom-center) falls inside one — tested with
 resolution changes; new cameras are onboarded by tracing polygons with
 [`tools/draw_zones.py`](tools/draw_zones.py) — no code changes, no retraining.
 Cameras without a polygon config fall back to a bbox-position heuristic.
+
+### Edge proximity
+
+`EDGE` zones are traced along the **open, unprotected sides** of elevated
+surfaces. A person whose feet point falls inside one raises a `NEAR_EDGE`
+WARNING naming the place — *"Standing near the open edge of the scaffold
+deck"* — independently of their PPE, so a correctly harnessed worker still
+gets a positional advisory while an unharnessed one gets both the advisory and
+the harness CRITICAL.
+
+Edges are traced explicitly rather than derived from the AT_HEIGHT polygon's
+boundary: a polygon border is not necessarily a drop (one side of a scaffold
+deck is the building wall), so which side is open is site knowledge. Each zone
+may carry a `label` used verbatim in alert text. Trace one with:
+
+```bash
+python tools/draw_zones.py --assist --type EDGE --video <clip> --frame <n> --camera_id <ID>
+```
 
 #### Assisted zone calibration
 

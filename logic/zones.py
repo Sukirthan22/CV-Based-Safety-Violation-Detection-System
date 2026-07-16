@@ -6,6 +6,9 @@ import numpy as np
 
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "zones.json"
 
+AT_HEIGHT = "AT_HEIGHT"
+EDGE = "EDGE"
+
 _CONFIG = None
 
 
@@ -28,11 +31,10 @@ def _load_config():
     return _CONFIG
 
 
-def get_at_height_zones(camera_id):
+def get_zones(camera_id, zone_type):
     """
-    Returns the list of approved AT_HEIGHT zone dicts configured for this
-    camera, or None when the camera has none (caller should fall back to the
-    position heuristic).
+    Returns the approved zones of one type configured for this camera, or None
+    when the camera has none.
 
     Zones written by tools/propose_zones.py carry status "proposed" and are
     ignored until a human approves them (tools/draw_zones.py --review).
@@ -44,14 +46,44 @@ def get_at_height_zones(camera_id):
     zones = [
         z
         for z in camera.get("zones", [])
-        if z.get("type") == "AT_HEIGHT" and z.get("status", "approved") == "approved"
+        if z.get("type") == zone_type and z.get("status", "approved") == "approved"
     ]
     return zones or None
+
+
+def get_at_height_zones(camera_id):
+    """Elevated surfaces: standing here means the harness rule applies."""
+    return get_zones(camera_id, AT_HEIGHT)
+
+
+def get_edge_zones(camera_id):
+    """Open edges of elevated surfaces: standing here means a fall risk."""
+    return get_zones(camera_id, EDGE)
+
+
+def zone_label(zone):
+    """Human-readable name for messages, from the optional 'label' field."""
+    return zone.get("label") or zone["name"].replace("_", " ")
 
 
 def scale_polygon(polygon, frame_size):
     w, h = frame_size
     return [(int(x * w), int(y * h)) for x, y in polygon]
+
+
+def find_zone(point, frame_size, camera_id, zone_type):
+    """
+    First zone of `zone_type` containing `point`, or None. Returns None both
+    when the camera has no zones of that type and when the point is outside
+    them all — callers that need to tell those apart should check get_zones().
+    """
+    zones = get_zones(camera_id, zone_type)
+    if zones is None:
+        return None
+    for zone in zones:
+        if point_in_zone(point, scale_polygon(zone["polygon"], frame_size)):
+            return zone
+    return None
 
 
 def is_at_height(feet_point, frame_size, camera_id):
@@ -61,10 +93,6 @@ def is_at_height(feet_point, frame_size, camera_id):
     normalized [0,1] coordinates, so they work at any stream resolution.
     Returns None when the camera has no AT_HEIGHT config.
     """
-    zones = get_at_height_zones(camera_id)
-    if zones is None:
+    if get_at_height_zones(camera_id) is None:
         return None
-    for zone in zones:
-        if point_in_zone(feet_point, scale_polygon(zone["polygon"], frame_size)):
-            return True
-    return False
+    return find_zone(feet_point, frame_size, camera_id, AT_HEIGHT) is not None

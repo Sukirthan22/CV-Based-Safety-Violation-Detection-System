@@ -5,10 +5,10 @@ import numpy as np
 from ultralytics import YOLO
 
 from logic.alerts import decide_alert_action
-from logic.context import is_person_at_height
+from logic.context import get_person_edge_zone, is_person_at_height
 from logic.perception import detect_ppe
-from logic.rules import evaluate_ppe_rules
-from logic.zones import get_at_height_zones, scale_polygon
+from logic.rules import NEAR_EDGE, evaluate_ppe_rules
+from logic.zones import get_at_height_zones, get_edge_zones, scale_polygon
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -26,6 +26,12 @@ def get_model():
 
 
 def build_contextual_reason(violation, at_height):
+    # NEAR_EDGE carries its zone as "NEAR_EDGE:<zone label>" so the log and the
+    # dashboard can say which edge, not just that there was one.
+    if violation.startswith(NEAR_EDGE):
+        _, _, zone = violation.partition(":")
+        return f"Standing near the open edge of {zone or 'an elevated surface'}"
+
     reasons = []
     if violation == "NO_HELMET":
         reasons.append("Helmet missing")
@@ -34,6 +40,28 @@ def build_contextual_reason(violation, at_height):
     if at_height:
         reasons.append("while working at height")
     return " ".join(reasons)
+
+
+def _draw_zone_outlines(frame, zones, frame_size, color, label, ui):
+    for zone_cfg in zones or []:
+        pts = scale_polygon(zone_cfg["polygon"], frame_size)
+        cv2.polylines(
+            frame,
+            [np.array(pts, dtype=np.int32)],
+            isClosed=True,
+            color=color,
+            thickness=1,
+        )
+        zx, zy = pts[0]
+        cv2.putText(
+            frame,
+            label,
+            (zx + 4, zy + int(16 * ui)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.75 * ui,
+            color,
+            1,
+        )
 
 
 def _event_id_for_person_violation(person_bbox, violation):
@@ -56,31 +84,17 @@ def process_frame(frame, camera_id="CAM_STREAM"):
     thick = 1 if ui < 0.55 else 2
     label_y = int(34 * ui) + 4
 
-    at_height_zones = get_at_height_zones(camera_id)
-    if at_height_zones:
-        for zone_cfg in at_height_zones:
-            pts = scale_polygon(zone_cfg["polygon"], (w, h))
-            cv2.polylines(
-                frame,
-                [np.array(pts, dtype=np.int32)],
-                isClosed=True,
-                color=(0, 165, 255),
-                thickness=1,
-            )
-            zx, zy = pts[0]
-            cv2.putText(
-                frame,
-                "AT HEIGHT",
-                (zx + 4, zy + int(16 * ui)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.75 * ui,
-                (0, 165, 255),
-                1,
-            )
+    _draw_zone_outlines(
+        frame, get_at_height_zones(camera_id), (w, h), (0, 165, 255), "AT HEIGHT", ui
+    )
+    _draw_zone_outlines(
+        frame, get_edge_zones(camera_id), (w, h), (255, 0, 255), "EDGE", ui
+    )
     person_alerts = []
     for person in persons:
         at_height = is_person_at_height(person["bbox"], (h, w), camera_id)
-        violations = evaluate_ppe_rules(person, at_height)
+        edge_zone = get_person_edge_zone(person["bbox"], (h, w), camera_id)
+        violations = evaluate_ppe_rules(person, at_height, edge_zone)
         person_violations = []
         for sev, violation in violations:
             reason = build_contextual_reason(violation, at_height)
@@ -103,8 +117,11 @@ def process_frame(frame, camera_id="CAM_STREAM"):
     if alert != "INFO":
         unique_reasons = []
         for v in all_violations:
-            if v[1] not in unique_reasons:
-                unique_reasons.append(v[1])
+            # Drop the ":<zone>" suffix so the banner stays short; the zone is
+            # named in the logged reason and on the dashboard.
+            label = v[1].split(":")[0]
+            if label not in unique_reasons:
+                unique_reasons.append(label)
         banner = f"{alert}: {', '.join(unique_reasons)}"
         banner_color = (0, 255, 255) if alert == "WARNING" else (0, 0, 255)
         bscale = ui
