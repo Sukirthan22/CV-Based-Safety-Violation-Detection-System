@@ -30,14 +30,22 @@ def _load_config():
 
 def get_at_height_zones(camera_id):
     """
-    Returns the list of AT_HEIGHT zone dicts configured for this camera,
-    or None when the camera has no polygon config (caller should fall back
-    to the position heuristic).
+    Returns the list of approved AT_HEIGHT zone dicts configured for this
+    camera, or None when the camera has none (caller should fall back to the
+    position heuristic).
+
+    Zones written by tools/propose_zones.py carry status "proposed" and are
+    ignored until a human approves them (tools/draw_zones.py --review).
+    Zones without a status field are treated as approved (hand-traced).
     """
     camera = _load_config().get(camera_id)
     if not camera:
         return None
-    zones = [z for z in camera.get("zones", []) if z.get("type") == "AT_HEIGHT"]
+    zones = [
+        z
+        for z in camera.get("zones", [])
+        if z.get("type") == "AT_HEIGHT" and z.get("status", "approved") == "approved"
+    ]
     return zones or None
 
 

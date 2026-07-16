@@ -47,7 +47,8 @@ in [`logic/`](logic/). Safety policy can be changed without retraining.
 | `logic/perception.py` | YOLO inference; associates helmets (head region) and harnesses (torso region) to each detected person. |
 | `logic/rules.py` | Violation rules: no helmet → WARNING; no harness at height → CRITICAL. |
 | `config/zones.json` | Per-camera AT_HEIGHT polygons (normalized coordinates) marking elevated work surfaces in the image. |
-| `tools/draw_zones.py` | Interactive editor: trace zone polygons on a video frame by clicking, saves to `config/zones.json`. |
+| `tools/draw_zones.py` | Interactive zone editor: manual tracing, one-click SAM-assisted tracing (`--assist`), and review of AI proposals (`--review`). |
+| `tools/propose_zones.py` | AI zone proposal: matches text prompts from `config/zone_prompts.txt` (YOLOE open-vocabulary segmentation) against a frame and writes candidate polygons with `status: "proposed"`. |
 | `next-dashboard/` | Next.js dashboard: live feed, filters, KPIs, incident history from the CSV via `/api/violations`. |
 | `dashboard.py` | Earlier Streamlit prototype of the dashboard (kept for reference). |
 | `logs/violations.csv` | Confirmed violation events (`timestamp, camera_id, violations, severity`). |
@@ -63,6 +64,26 @@ feet point (bbox bottom-center) falls inside one — tested with
 resolution changes; new cameras are onboarded by tracing polygons with
 [`tools/draw_zones.py`](tools/draw_zones.py) — no code changes, no retraining.
 Cameras without a polygon config fall back to a bbox-position heuristic.
+
+#### Assisted zone calibration
+
+Zones can be produced three ways, in increasing order of automation:
+
+1. **Manual**: `python tools/draw_zones.py --video <clip> --frame <n> --camera_id <ID>` — click each vertex.
+2. **One-click (SAM)**: add `--assist` — click once on a surface and SAM traces
+   its outline; accept or discard, then name it.
+3. **Fully proposed (YOLOE)**: `python tools/propose_zones.py --video <clip> --frame <n> --camera_id <ID>`
+   — an open-vocabulary model matches plain-English surface descriptions from
+   `config/zone_prompts.txt` and writes candidate polygons.
+
+AI-produced zones are written with `status: "proposed"` and are **ignored by the
+runtime** until a human approves them
+(`python tools/draw_zones.py --review --camera_id <ID> --video <clip> --frame <n>`,
+then `a`/`d` per proposal). This keeps the zone config auditable: every active
+zone was either drawn or ratified by a person. Model weights (~800 MB total)
+auto-download on first use and are gitignored. In practice the open-vocabulary
+tier finds the right structures but over-traces them (e.g. a whole scaffold
+including its legs); the one-click tier is the precision workhorse.
 
 ### False-positive suppression
 
