@@ -159,8 +159,14 @@ def process_frame(frame, camera_id="CAM_STREAM", tracker=None):
     events_to_speak = []
     events_started = []
     events_ended = []
+    
+    current_person_ids = {person["person_id"] for person, _, _ in per_person}
+    
     if tracker is not None:
-        smoothed_by_person, events_to_speak, events_started, events_ended = tracker.update(raw_violations_for_tracker)
+        smoothed_by_person, events_to_speak, events_started, events_ended = tracker.update(
+            raw_violations_for_tracker, 
+            current_person_ids=current_person_ids
+        )
         for i, (person, _, _) in enumerate(per_person):
             pid = person["person_id"]
             smoothed_violations = smoothed_by_person.get(pid, [])

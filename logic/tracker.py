@@ -10,13 +10,16 @@ class ViolationTracker:
         # State per event_id. event_id is like "NO_HELMET:worker_7"
         self.states = {}
 
-    def update(self, current_violations):
+    def update(self, current_violations, current_person_ids=None):
         """
         current_violations is a list of (severity, violation, reason, event_id, person_id)
-        Returns (smoothed_by_person, events_to_log)
+        current_person_ids is an optional set of person_ids visible in the current frame.
+        Returns (smoothed_by_person, events_to_speak, events_started, events_ended)
         where smoothed_by_person is a dict mapping person_id -> list of (sev, violation, reason, event_id)
         """
         now = time.time()
+        if current_person_ids is None:
+            current_person_ids = set()
         
         current_event_ids = set()
         for sev, violation, reason, event_id, person_id in current_violations:
@@ -40,6 +43,13 @@ class ViolationTracker:
                 state["last_seen"] = now
                 state["severity"] = sev
                 state["reason"] = reason
+
+        # Instantly expire violations for people who are visible but no longer violating
+        for eid, state in self.states.items():
+            if eid not in current_event_ids and state["person_id"] in current_person_ids:
+                # The person is in the frame, but this violation is no longer active!
+                # They fixed it (e.g. put helmet on). Instantly expire it.
+                state["last_seen"] = 0
 
         stale_ids = [
             eid for eid, state in self.states.items()

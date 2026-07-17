@@ -46,6 +46,9 @@ if __name__ == "__main__":
     tracker = ViolationTracker(tolerance_seconds=1.5, confirm_seconds=1.5, forget_seconds=10.0, cooldown_seconds=10.0)
     alerter = AudioAlerter()
 
+    # Clean up any dangling "Open" violations from previous crashes
+    close_all_open_violations()
+
     try:
         while True:
             ret, frame = cap.read()

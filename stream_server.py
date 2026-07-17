@@ -56,6 +56,9 @@ def frame_producer(source, fps, state, camera_id, mode):
     tracker = ViolationTracker(tolerance_seconds=1.5, confirm_seconds=1.5, forget_seconds=10.0, cooldown_seconds=10.0)
     alerter = AudioAlerter()
     
+    # Clean up any dangling "Open" violations from previous crashes
+    close_all_open_violations()
+    
     try:
         while True:
             start = time.time()
