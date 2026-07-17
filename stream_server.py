@@ -14,9 +14,7 @@ from logic.pipeline import process_frame
 
 BASE_DIR = Path(__file__).resolve().parent
 
-EVENT_CONFIRM_FRAMES = 15
-EVENT_COOLDOWN_SECONDS = 60
-EVENT_FORGET_FRAMES = 120
+from logic.tracker import ViolationTracker
 
 
 class StreamState:
@@ -55,8 +53,8 @@ def frame_producer(source, fps, state, camera_id, mode):
             raise RuntimeError(f"Unable to open video: {source}")
 
     frame_interval = 1.0 / max(fps, 1)
-    event_state = {}
-    frame_index = 0
+    tracker = ViolationTracker(tolerance_seconds=1.5, confirm_seconds=1.5, forget_seconds=10.0, cooldown_seconds=60.0)
+    
     while True:
         start = time.time()
         ret, frame = cap.read()
@@ -69,58 +67,20 @@ def frame_producer(source, fps, state, camera_id, mode):
             cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
             continue
 
-        frame, alert, all_violations = process_frame(frame, camera_id)
-        frame_index += 1
-        now = datetime.now()
-
-        current_event_ids = {v[3] for v in all_violations}
-        for event_id in current_event_ids:
-            state_item = event_state.get(
-                event_id, {"count": 0, "last_seen_frame": -1, "last_logged_at": None}
-            )
-            if state_item["last_seen_frame"] == frame_index - 1:
-                state_item["count"] += 1
-            else:
-                state_item["count"] = 1
-            state_item["last_seen_frame"] = frame_index
-            event_state[event_id] = state_item
-
-        stale_ids = [
-            event_id
-            for event_id, state_item in event_state.items()
-            if frame_index - state_item["last_seen_frame"] > EVENT_FORGET_FRAMES
-        ]
-        for event_id in stale_ids:
-            del event_state[event_id]
-
-        events_to_log = []
-        for event_id in current_event_ids:
-            state_item = event_state[event_id]
-            cooldown_done = (
-                state_item["last_logged_at"] is None
-                or (now - state_item["last_logged_at"])
-                >= timedelta(seconds=EVENT_COOLDOWN_SECONDS)
-            )
-            if state_item["count"] >= EVENT_CONFIRM_FRAMES and cooldown_done:
-                events_to_log.append(event_id)
+        frame, alert, events_to_log = process_frame(frame, camera_id, tracker=tracker)
 
         if events_to_log:
-            violations_to_log = [v for v in all_violations if v[3] in events_to_log]
-            if violations_to_log:
-                # Severity of the logged batch, not of the whole frame — a
-                # WARNING event must not inherit CRITICAL from bystanders.
-                severity = (
-                    "CRITICAL"
-                    if any(v[0] == "CRITICAL" for v in violations_to_log)
-                    else violations_to_log[0][0]
-                )
-                log_violation(
-                    camera_id=camera_id,
-                    violations=violations_to_log,
-                    severity=severity,
-                )
-                for event_id in events_to_log:
-                    event_state[event_id]["last_logged_at"] = now
+            severity = (
+                "CRITICAL"
+                if any(v[0] == "CRITICAL" for v in events_to_log)
+                else events_to_log[0][0]
+            )
+            log_violation(
+                camera_id=camera_id,
+                violations=events_to_log,
+                severity=severity,
+            )
+            tracker.mark_logged(events_to_log)
 
         state.set_alert(alert)
         ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])

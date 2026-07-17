@@ -116,7 +116,7 @@ def _event_id_for_person_violation(person_id, violation):
     return f"{violation}:worker_{person_id}"
 
 
-def process_frame(frame, camera_id="CAM_STREAM"):
+def process_frame(frame, camera_id="CAM_STREAM", tracker=None):
     model = get_model()
     h, w, _ = frame.shape
     all_violations = []
@@ -135,7 +135,10 @@ def process_frame(frame, camera_id="CAM_STREAM"):
     _draw_zone_outlines(
         frame, get_edge_zones(camera_id), (w, h), (255, 0, 255), "EDGE", ui
     )
+    
+    raw_violations_for_tracker = []
     per_person = []
+    
     for person in persons:
         at_height = is_person_at_height(person["bbox"], (h, w), camera_id)
         edge_zone = get_person_edge_zone(person["bbox"], (h, w), camera_id)
@@ -145,8 +148,22 @@ def process_frame(frame, camera_id="CAM_STREAM"):
             reason = build_contextual_reason(violation, at_height)
             event_id = _event_id_for_person_violation(person["person_id"], violation)
             person_violations.append((sev, violation, reason, event_id))
-        all_violations.extend(person_violations)
-        per_person.append((person, person_violations, decide_alert_action(person_violations)))
+            raw_violations_for_tracker.append((sev, violation, reason, event_id, person["person_id"]))
+            
+        if tracker is None:
+            all_violations.extend(person_violations)
+            per_person.append((person, person_violations, decide_alert_action(person_violations)))
+        else:
+            per_person.append((person, [], "COMPLIANT"))
+
+    events_to_log = []
+    if tracker is not None:
+        smoothed_by_person, events_to_log = tracker.update(raw_violations_for_tracker)
+        for i, (person, _, _) in enumerate(per_person):
+            pid = person["person_id"]
+            smoothed_violations = smoothed_by_person.get(pid, [])
+            per_person[i] = (person, smoothed_violations, decide_alert_action(smoothed_violations))
+            all_violations.extend(smoothed_violations)
 
     alert = decide_alert_action(all_violations)
 
@@ -176,4 +193,4 @@ def process_frame(frame, camera_id="CAM_STREAM"):
         )
         ly += int(26 * ui)
 
-    return frame, alert, all_violations
+    return frame, alert, events_to_log if tracker is not None else all_violations
