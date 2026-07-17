@@ -53,13 +53,14 @@ if __name__ == "__main__":
         frame, alert, events_to_log = process_frame(frame, camera_id, tracker=tracker)
 
         if events_to_log:
-            log_violation(
-                camera_id=camera_id,
-                violations=events_to_log,
-                severity=alert,
-            )
+            for event in events_to_log:
+                log_violation(
+                    camera_id=camera_id,
+                    violations=[event],
+                    severity=event[0],
+                )
             tracker.mark_logged(events_to_log)
-            print("LOGGED:", alert, [(v[1], v[3]) for v in events_to_log])
+            print("LOGGED:", [(v[0], v[1], v[3]) for v in events_to_log])
 
         cv2.imshow("PPE Monitor", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):

@@ -70,16 +70,12 @@ def frame_producer(source, fps, state, camera_id, mode):
         frame, alert, events_to_log = process_frame(frame, camera_id, tracker=tracker)
 
         if events_to_log:
-            severity = (
-                "CRITICAL"
-                if any(v[0] == "CRITICAL" for v in events_to_log)
-                else events_to_log[0][0]
-            )
-            log_violation(
-                camera_id=camera_id,
-                violations=events_to_log,
-                severity=severity,
-            )
+            for event in events_to_log:
+                log_violation(
+                    camera_id=camera_id,
+                    violations=[event],
+                    severity=event[0],
+                )
             tracker.mark_logged(events_to_log)
 
         state.set_alert(alert)
