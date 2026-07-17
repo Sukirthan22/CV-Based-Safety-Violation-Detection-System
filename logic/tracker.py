@@ -38,18 +38,22 @@ class ViolationTracker:
             else:
                 state = self.states[event_id]
                 # If it was inactive for longer than tolerance, reset its start time
-                if (now - state["last_seen"]) > self.tolerance_seconds:
+                tol = 3.0 if state["violation"] == "NO_HARNESS" else self.tolerance_seconds
+                if (now - state["last_seen"]) > tol:
                     state["first_seen"] = now
                 state["last_seen"] = now
                 state["severity"] = sev
                 state["reason"] = reason
 
-        # Instantly expire violations for people who are visible but no longer violating
+        # Expire violations for people who are visible but no longer violating
+        # We wait for `tolerance_seconds` to pass first to ensure it's not just a 1-frame AI flicker!
         for eid, state in self.states.items():
             if eid not in current_event_ids and state["person_id"] in current_person_ids:
-                # The person is in the frame, but this violation is no longer active!
-                # They fixed it (e.g. put helmet on). Instantly expire it.
-                state["last_seen"] = 0
+                tol = 3.0 if state["violation"] == "NO_HARNESS" else self.tolerance_seconds
+                if (now - state["last_seen"]) > tol:
+                    # The person is in the frame, but this violation has been missing for 
+                    # longer than the flicker tolerance. They fixed it! Instantly expire it.
+                    state["last_seen"] = 0
 
         stale_ids = [
             eid for eid, state in self.states.items()
@@ -67,7 +71,8 @@ class ViolationTracker:
         events_started = []
         
         for eid, state in self.states.items():
-            if (now - state["last_seen"]) <= self.tolerance_seconds:
+            tol = 3.0 if state["violation"] == "NO_HARNESS" else self.tolerance_seconds
+            if (now - state["last_seen"]) <= tol:
                 pid = state["person_id"]
                 if pid not in smoothed_by_person:
                     smoothed_by_person[pid] = []
