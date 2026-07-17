@@ -69,15 +69,18 @@ Cameras without a polygon config fall back to a bbox-position heuristic.
 
 `EDGE` zones are traced along the **open, unprotected sides** of elevated
 surfaces. A person whose feet point falls inside one raises a `NEAR_EDGE`
-WARNING naming the place — *"Standing near the open edge of the scaffold
-deck"* — independently of their PPE, so a correctly harnessed worker still
-gets a positional advisory while an unharnessed one gets both the advisory and
-the harness CRITICAL.
+WARNING naming the place — *"Standing near the scaffold's front edge"* —
+independently of their PPE, so a correctly harnessed worker still gets a
+positional advisory while an unharnessed one gets both the advisory and the
+harness CRITICAL.
 
-Edges are traced explicitly rather than derived from the AT_HEIGHT polygon's
-boundary: a polygon border is not necessarily a drop (one side of a scaffold
-deck is the building wall), so which side is open is site knowledge. Each zone
-may carry a `label` used verbatim in alert text. Trace one with:
+Each open side gets its own polygon: the demo scaffold has a `front` edge
+(over the yard) and a `back` edge, and the back polygon deliberately stops
+where the building wall begins backing the deck. That is why edges are traced
+explicitly rather than derived from the AT_HEIGHT polygon's boundary — a
+polygon border is not necessarily a drop, so which sides are open, and for how
+far, is site knowledge. Each zone may carry a `label` used verbatim in alert
+text. Trace one with:
 
 ```bash
 python tools/draw_zones.py --assist --type EDGE --video <clip> --frame <n> --camera_id <ID>

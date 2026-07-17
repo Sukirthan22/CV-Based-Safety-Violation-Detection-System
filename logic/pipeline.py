@@ -30,7 +30,7 @@ def build_contextual_reason(violation, at_height):
     # dashboard can say which edge, not just that there was one.
     if violation.startswith(NEAR_EDGE):
         _, _, zone = violation.partition(":")
-        return f"Standing near the open edge of {zone or 'an elevated surface'}"
+        return f"Standing near {zone or 'an unprotected edge'}"
 
     reasons = []
     if violation == "NO_HELMET":
@@ -40,6 +40,46 @@ def build_contextual_reason(violation, at_height):
     if at_height:
         reasons.append("while working at height")
     return " ".join(reasons)
+
+
+def _draw_person_labels(frame, person_box, person_violations, ui):
+    """Stack each person's own violation labels above their box."""
+    if not person_violations:
+        return
+    x1, y1, x2, y2 = person_box
+    h, w = frame.shape[:2]
+
+    seen = []
+    for sev, violation, _reason, _event_id in person_violations:
+        text = violation.split(":")[0]
+        if text not in [t for t, _ in seen]:
+            seen.append((text, sev))
+
+    scale = max(0.35, 0.5 * ui)
+    (_, th), base = cv2.getTextSize("Ag", cv2.FONT_HERSHEY_SIMPLEX, scale, 1)
+    row = th + base + 4
+    widths = [cv2.getTextSize(t, cv2.FONT_HERSHEY_SIMPLEX, scale, 1)[0][0] for t, _ in seen]
+
+    # Keep the label block on screen: nudge left if it would overflow the right
+    # edge, and drop it just inside the box when there is no room above.
+    lx = max(0, min(x1, w - max(widths) - 8))
+    top = y1 - row * len(seen) - 2
+    if top < 0:
+        top = min(y1 + 2, h - row * len(seen))
+
+    for (text, sev), tw in zip(seen, widths):
+        color = (0, 255, 255) if sev == "WARNING" else (0, 0, 255)
+        cv2.rectangle(frame, (lx, top), (lx + tw + 6, top + row - 2), (0, 0, 0), -1)
+        cv2.putText(
+            frame,
+            text,
+            (lx + 3, top + row - base - 4),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            scale,
+            color,
+            1,
+        )
+        top += row
 
 
 def _draw_zone_outlines(frame, zones, frame_size, color, label, ui):
@@ -90,7 +130,7 @@ def process_frame(frame, camera_id="CAM_STREAM"):
     _draw_zone_outlines(
         frame, get_edge_zones(camera_id), (w, h), (255, 0, 255), "EDGE", ui
     )
-    person_alerts = []
+    per_person = []
     for person in persons:
         at_height = is_person_at_height(person["bbox"], (h, w), camera_id)
         edge_zone = get_person_edge_zone(person["bbox"], (h, w), camera_id)
@@ -101,11 +141,11 @@ def process_frame(frame, camera_id="CAM_STREAM"):
             event_id = _event_id_for_person_violation(person["bbox"], violation)
             person_violations.append((sev, violation, reason, event_id))
         all_violations.extend(person_violations)
-        person_alerts.append(decide_alert_action(person_violations))
+        per_person.append((person, person_violations, decide_alert_action(person_violations)))
 
     alert = decide_alert_action(all_violations)
 
-    for person, person_alert in zip(persons, person_alerts):
+    for person, person_violations, person_alert in per_person:
         x1, y1, x2, y2 = person["bbox"]
         color = (0, 255, 0)
         if person_alert == "WARNING":
@@ -113,34 +153,7 @@ def process_frame(frame, camera_id="CAM_STREAM"):
         elif person_alert == "CRITICAL":
             color = (0, 0, 255)
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-
-    if alert != "INFO":
-        unique_reasons = []
-        for v in all_violations:
-            # Drop the ":<zone>" suffix so the banner stays short; the zone is
-            # named in the logged reason and on the dashboard.
-            label = v[1].split(":")[0]
-            if label not in unique_reasons:
-                unique_reasons.append(label)
-        banner = f"{alert}: {', '.join(unique_reasons)}"
-        banner_color = (0, 255, 255) if alert == "WARNING" else (0, 0, 255)
-        bscale = ui
-        (tw, th), base = cv2.getTextSize(banner, cv2.FONT_HERSHEY_SIMPLEX, bscale, thick)
-        max_tw = w - 20
-        if tw > max_tw:
-            bscale = bscale * max_tw / tw
-            (tw, th), base = cv2.getTextSize(banner, cv2.FONT_HERSHEY_SIMPLEX, bscale, thick)
-        bx, by = 10, h - 10
-        cv2.rectangle(frame, (bx - 6, by - th - base - 6), (bx + tw + 6, by + 4), (0, 0, 0), -1)
-        cv2.putText(
-            frame,
-            banner,
-            (bx, by - base),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            bscale,
-            banner_color,
-            thick,
-        )
+        _draw_person_labels(frame, person["bbox"], person_violations, ui)
 
     legend = [("COMPLIANT", (0, 255, 0)), ("WARNING", (0, 255, 255)), ("CRITICAL", (0, 0, 255))]
     legend_scale = 0.85 * ui

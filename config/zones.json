@@ -47,9 +47,9 @@
         ]
       },
       {
-        "name": "scaffold_deck_edge",
+        "name": "scaffold_edge_front",
         "type": "EDGE",
-        "label": "the scaffold deck",
+        "label": "the scaffold's front edge",
         "polygon": [
           [
             0.6,
@@ -66,6 +66,29 @@
           [
             0.6,
             0.476
+          ]
+        ]
+      },
+      {
+        "name": "scaffold_edge_back",
+        "type": "EDGE",
+        "label": "the scaffold's back edge",
+        "polygon": [
+          [
+            0.6,
+            0.356
+          ],
+          [
+            0.76,
+            0.398
+          ],
+          [
+            0.76,
+            0.468
+          ],
+          [
+            0.6,
+            0.426
           ]
         ]
       },
