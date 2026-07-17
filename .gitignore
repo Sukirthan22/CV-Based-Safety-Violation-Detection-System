@@ -10,6 +10,7 @@ venv/
 # Model weights
 *.pt
 *.pth
+mobileclip*.ts
 
 # Training outputs
 runs/

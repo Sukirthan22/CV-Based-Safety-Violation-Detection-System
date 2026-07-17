@@ -1,0 +1,11 @@
+# Text prompts for tools/propose_zones.py — one per line, # for comments.
+# Each phrase describes a surface where a standing worker counts as "at height".
+# Zones proposed from these prompts are written to config/zones.json with
+# status "proposed" and only take effect after review/approval
+# (python tools/draw_zones.py --review --camera_id <ID>).
+scaffold walkway
+elevated platform
+rooftop
+girder
+# bridge deck under construction
+# tower crane platform
