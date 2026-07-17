@@ -25,7 +25,8 @@ class ViolationTracker:
                 self.states[event_id] = {
                     "first_seen": now,
                     "last_seen": now,
-                    "last_logged": None,
+                    "last_spoken": None,
+                    "is_logged_as_started": False,
                     "severity": sev,
                     "reason": reason,
                     "violation": violation,
@@ -40,20 +41,22 @@ class ViolationTracker:
                 state["severity"] = sev
                 state["reason"] = reason
 
-        # Cleanup forgotten events
         stale_ids = [
             eid for eid, state in self.states.items()
             if (now - state["last_seen"]) > self.forget_seconds
         ]
+        events_ended = []
         for eid in stale_ids:
+            state = self.states[eid]
+            if state.get("is_logged_as_started"):
+                events_ended.append((state["severity"], state["violation"], state["reason"], eid, state["person_id"]))
             del self.states[eid]
             
-        # Determine active smoothed violations (within tolerance)
         smoothed_by_person = {}
-        events_to_log = []
+        events_to_speak = []
+        events_started = []
         
         for eid, state in self.states.items():
-            # It is active if it was seen within the tolerance window
             if (now - state["last_seen"]) <= self.tolerance_seconds:
                 pid = state["person_id"]
                 if pid not in smoothed_by_person:
@@ -62,18 +65,21 @@ class ViolationTracker:
 
                 required_time = 3.5 if state["violation"] == "NO_HARNESS" else self.confirm_seconds
                 if (now - state["first_seen"]) >= required_time:
-                    if state["last_logged"] is None or (now - state["last_logged"]) >= self.cooldown_seconds:
-                        events_to_log.append((state["severity"], state["violation"], state["reason"], eid))
-
-                # Check if it should be logged
-                # if (now - state["first_seen"]) >= self.confirm_seconds:
-                #     if state["last_logged"] is None or (now - state["last_logged"]) >= self.cooldown_seconds:
-                #         events_to_log.append((state["severity"], state["violation"], state["reason"], eid))
+                    if not state.get("is_logged_as_started"):
+                        events_started.append((state["severity"], state["violation"], state["reason"], eid, state["person_id"]))
                         
-        return smoothed_by_person, events_to_log
+                    if state.get("last_spoken") is None or (now - state.get("last_spoken")) >= self.cooldown_seconds:
+                        events_to_speak.append((state["severity"], state["violation"], state["reason"], eid, state["person_id"]))
+                        
+        return smoothed_by_person, events_to_speak, events_started, events_ended
         
-    def mark_logged(self, events):
-        now = time.time()
-        for _, _, _, eid in events:
+    def mark_started(self, events):
+        for _, _, _, eid, _ in events:
             if eid in self.states:
-                self.states[eid]["last_logged"] = now
+                self.states[eid]["is_logged_as_started"] = True
+
+    def mark_spoken(self, events):
+        now = time.time()
+        for _, _, _, eid, _ in events:
+            if eid in self.states:
+                self.states[eid]["last_spoken"] = now

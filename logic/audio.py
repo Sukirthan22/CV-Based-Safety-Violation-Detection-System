@@ -29,7 +29,7 @@ class AudioAlerter:
             self.q.task_done()
 
     def process_events(self, events_to_log):
-        for sev, violation, reason, event_id in events_to_log:
+        for sev, violation, reason, event_id, person_id in events_to_log:
             if sev == "CRITICAL":
                 # Parse the worker ID from event_id (e.g. "NO_HARNESS:worker_7")
                 try:

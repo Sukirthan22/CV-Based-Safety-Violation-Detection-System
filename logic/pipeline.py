@@ -156,9 +156,11 @@ def process_frame(frame, camera_id="CAM_STREAM", tracker=None):
         else:
             per_person.append((person, [], "COMPLIANT"))
 
-    events_to_log = []
+    events_to_speak = []
+    events_started = []
+    events_ended = []
     if tracker is not None:
-        smoothed_by_person, events_to_log = tracker.update(raw_violations_for_tracker)
+        smoothed_by_person, events_to_speak, events_started, events_ended = tracker.update(raw_violations_for_tracker)
         for i, (person, _, _) in enumerate(per_person):
             pid = person["person_id"]
             smoothed_violations = smoothed_by_person.get(pid, [])
@@ -193,4 +195,7 @@ def process_frame(frame, camera_id="CAM_STREAM", tracker=None):
         )
         ly += int(26 * ui)
 
-    return frame, alert, events_to_log if tracker is not None else all_violations
+    if tracker is not None:
+        return frame, alert, events_to_speak, events_started, events_ended
+    else:
+        return frame, alert, all_violations, [], []

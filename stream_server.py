@@ -8,7 +8,7 @@ from pathlib import Path
 
 import cv2
 
-from logic.logger import log_violation
+from logic.logger import log_violation_start, log_violation_end, close_all_open_violations
 from logic.pipeline import process_frame
 from logic.tracker import ViolationTracker
 from logic.audio import AudioAlerter
@@ -56,38 +56,53 @@ def frame_producer(source, fps, state, camera_id, mode):
     tracker = ViolationTracker(tolerance_seconds=1.5, confirm_seconds=1.5, forget_seconds=10.0, cooldown_seconds=10.0)
     alerter = AudioAlerter()
     
-    while True:
-        start = time.time()
-        ret, frame = cap.read()
-        if not ret:
-            if mode == "file":
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    try:
+        while True:
+            start = time.time()
+            ret, frame = cap.read()
+            if not ret:
+                if mode == "file":
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    continue
+                cap.release()
+                time.sleep(1.0)
+                cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
                 continue
-            cap.release()
-            time.sleep(1.0)
-            cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
-            continue
 
-        frame, alert, events_to_log = process_frame(frame, camera_id, tracker=tracker)
+            frame, alert, events_to_speak, events_started, events_ended = process_frame(frame, camera_id, tracker=tracker)
 
-        if events_to_log:
-            for event in events_to_log:
-                log_violation(
-                    camera_id=camera_id,
-                    violations=[event],
-                    severity=event[0],
-                )
-            tracker.mark_logged(events_to_log)
-            alerter.process_events(events_to_log)
+            if events_started:
+                for event in events_started:
+                    log_violation_start(
+                        camera_id=camera_id,
+                        person_id=event[4],
+                        violation=event[1],
+                        severity=event[0]
+                    )
+                tracker.mark_started(events_started)
+                
+            if events_ended:
+                for event in events_ended:
+                    log_violation_end(
+                        camera_id=camera_id,
+                        person_id=event[4],
+                        violation=event[1]
+                    )
 
-        state.set_alert(alert)
-        ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-        if ok:
-            state.set_frame(encoded.tobytes())
+            if events_to_speak:
+                alerter.process_events(events_to_speak)
+                tracker.mark_spoken(events_to_speak)
 
-        elapsed = time.time() - start
-        if elapsed < frame_interval:
-            time.sleep(frame_interval - elapsed)
+            state.set_alert(alert)
+            ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            if ok:
+                state.set_frame(encoded.tobytes())
+
+            elapsed = time.time() - start
+            if elapsed < frame_interval:
+                time.sleep(frame_interval - elapsed)
+    finally:
+        close_all_open_violations()
 
 
 class StreamHandler(BaseHTTPRequestHandler):

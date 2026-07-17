@@ -4,7 +4,7 @@ from pathlib import Path
 
 import cv2
 
-from logic.logger import log_violation
+from logic.logger import log_violation_start, log_violation_end, close_all_open_violations
 from logic.pipeline import process_frame
 from logic.tracker import ViolationTracker
 from logic.audio import AudioAlerter
@@ -46,28 +46,44 @@ if __name__ == "__main__":
     tracker = ViolationTracker(tolerance_seconds=1.5, confirm_seconds=1.5, forget_seconds=10.0, cooldown_seconds=10.0)
     alerter = AudioAlerter()
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-        frame, alert, events_to_log = process_frame(frame, camera_id, tracker=tracker)
+            frame, alert, events_to_speak, events_started, events_ended = process_frame(frame, camera_id, tracker=tracker)
 
-        if events_to_log:
-            for event in events_to_log:
-                log_violation(
-                    camera_id=camera_id,
-                    violations=[event],
-                    severity=event[0],
-                )
-            tracker.mark_logged(events_to_log)
-            alerter.process_events(events_to_log)
-            print("LOGGED:", [(v[0], v[1], v[3]) for v in events_to_log])
+            if events_started:
+                for event in events_started:
+                    log_violation_start(
+                        camera_id=camera_id,
+                        person_id=event[4],
+                        violation=event[1],
+                        severity=event[0]
+                    )
+                tracker.mark_started(events_started)
+                print("STARTED:", [(v[0], v[1], v[3]) for v in events_started])
+                
+            if events_ended:
+                for event in events_ended:
+                    log_violation_end(
+                        camera_id=camera_id,
+                        person_id=event[4],
+                        violation=event[1]
+                    )
+                print("ENDED:", [(v[0], v[1], v[3]) for v in events_ended])
 
-        cv2.imshow("PPE Monitor", frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
+            if events_to_speak:
+                alerter.process_events(events_to_speak)
+                tracker.mark_spoken(events_to_speak)
 
-    cap.release()
-    cv2.destroyAllWindows()
+            cv2.imshow("PPE Monitor", frame)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+
+    finally:
+        close_all_open_violations()
+        cap.release()
+        cv2.destroyAllWindows()
 
