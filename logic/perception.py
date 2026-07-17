@@ -79,7 +79,7 @@ def _has_harness(person_bbox, harness_bboxes):
 
 
 def detect_ppe(frame, model, conf=0.25):
-    results = model(frame, conf=conf)
+    results = model.track(frame, conf=conf, persist=True, tracker="bytetrack.yaml", verbose=False)
     boxes = results[0].boxes
 
     person_ids, helmet_ids, harness_ids = _class_groups(model)
@@ -91,19 +91,21 @@ def detect_ppe(frame, model, conf=0.25):
     for box in boxes:
         cls = int(box.cls[0])
         bbox = _to_bbox(box.xyxy[0])
+        track_id = int(box.id[0].item()) if (hasattr(box, 'id') and box.id is not None) else None
 
         if cls in person_ids:
-            person_bboxes.append(bbox)
+            person_bboxes.append((bbox, track_id))
         elif cls in helmet_ids:
             helmet_bboxes.append(bbox)
         elif cls in harness_ids:
             harness_bboxes.append(bbox)
 
     persons = []
-    for i, person_bbox in enumerate(person_bboxes):
+    for i, (person_bbox, track_id) in enumerate(person_bboxes):
+        actual_id = track_id if track_id is not None else i
         persons.append(
             {
-                "person_id": i,
+                "person_id": actual_id,
                 "helmet": _has_helmet(person_bbox, helmet_bboxes),
                 "harness": _has_harness(person_bbox, harness_bboxes),
                 "bbox": person_bbox,

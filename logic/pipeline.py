@@ -42,14 +42,17 @@ def build_contextual_reason(violation, at_height):
     return " ".join(reasons)
 
 
-def _draw_person_labels(frame, person_box, person_violations, ui):
+def _draw_person_labels(frame, person_box, person_violations, ui, person_id=None):
     """Stack each person's own violation labels above their box."""
-    if not person_violations:
+    if not person_violations and person_id is None:
         return
     x1, y1, x2, y2 = person_box
     h, w = frame.shape[:2]
 
     seen = []
+    if person_id is not None:
+        seen.append((f"ID: {person_id}", "INFO"))
+        
     for sev, violation, _reason, _event_id in person_violations:
         text = violation.split(":")[0]
         if text not in [t for t, _ in seen]:
@@ -68,7 +71,12 @@ def _draw_person_labels(frame, person_box, person_violations, ui):
         top = min(y1 + 2, h - row * len(seen))
 
     for (text, sev), tw in zip(seen, widths):
-        color = (0, 255, 255) if sev == "WARNING" else (0, 0, 255)
+        if sev == "WARNING":
+            color = (0, 255, 255)
+        elif sev == "CRITICAL":
+            color = (0, 0, 255)
+        else:
+            color = (0, 255, 0)
         cv2.rectangle(frame, (lx, top), (lx + tw + 6, top + row - 2), (0, 0, 0), -1)
         cv2.putText(
             frame,
@@ -104,11 +112,8 @@ def _draw_zone_outlines(frame, zones, frame_size, color, label, ui):
         )
 
 
-def _event_id_for_person_violation(person_bbox, violation):
-    x1, y1, x2, y2 = person_bbox
-    qcx = int(((x1 + x2) / 2) // 20)
-    qcy = int(((y1 + y2) / 2) // 20)
-    return f"{violation}:{qcx}:{qcy}"
+def _event_id_for_person_violation(person_id, violation):
+    return f"{violation}:worker_{person_id}"
 
 
 def process_frame(frame, camera_id="CAM_STREAM"):
@@ -138,7 +143,7 @@ def process_frame(frame, camera_id="CAM_STREAM"):
         person_violations = []
         for sev, violation in violations:
             reason = build_contextual_reason(violation, at_height)
-            event_id = _event_id_for_person_violation(person["bbox"], violation)
+            event_id = _event_id_for_person_violation(person["person_id"], violation)
             person_violations.append((sev, violation, reason, event_id))
         all_violations.extend(person_violations)
         per_person.append((person, person_violations, decide_alert_action(person_violations)))
@@ -153,7 +158,7 @@ def process_frame(frame, camera_id="CAM_STREAM"):
         elif person_alert == "CRITICAL":
             color = (0, 0, 255)
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-        _draw_person_labels(frame, person["bbox"], person_violations, ui)
+        _draw_person_labels(frame, person["bbox"], person_violations, ui, person["person_id"])
 
     legend = [("COMPLIANT", (0, 255, 0)), ("WARNING", (0, 255, 255)), ("CRITICAL", (0, 0, 255))]
     legend_scale = 0.85 * ui

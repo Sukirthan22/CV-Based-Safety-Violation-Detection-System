@@ -1,14 +1,11 @@
-﻿import argparse
+import argparse
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import cv2
-from ultralytics import YOLO
 
-from logic.alerts import decide_alert_action
-from logic.context import get_person_zone, is_person_at_height
 from logic.logger import log_violation
-from logic.perception import detect_ppe
-from logic.rules import evaluate_ppe_rules
+from logic.pipeline import process_frame
 
 
 EVENT_CONFIRM_FRAMES = 5
@@ -37,124 +34,18 @@ if args.mode == "demo":
     camera_id = "CAM_DEMO"
 else:
     if args.video_path is None:
-        print("Video path not provided")
-        raise SystemExit(1)
+        video_candidate = Path("videos/test.mp4")
+        if video_candidate.exists():
+            args.video_path = str(video_candidate)
+        else:
+            print("Video path not provided")
+            raise SystemExit(1)
     cap = cv2.VideoCapture(args.video_path)
     camera_id = "CAM_VIDEO"
 
-model = YOLO("CVBASEDSMS\\CVBASEDSMS\\model\\best.pt")
-print("MODEL CLASSES:", model.names)
-
-
-def build_contextual_reason(violation, zone, at_height):
-    reasons = []
-    if violation == "NO_HELMET":
-        reasons.append("Helmet missing")
-    if violation == "NO_HARNESS":
-        reasons.append("Safety harness missing")
-    if zone == "HIGH_RISK":
-        reasons.append("in HIGH-RISK zone")
-    if at_height:
-        reasons.append("while working at height")
-    return " ".join(reasons)
-
-
-def _event_id_for_person_violation(person_bbox, zone, violation):
-    x1, y1, x2, y2 = person_bbox
-    # Quantized center keeps event ids stable across nearby frames.
-    qcx = int(((x1 + x2) / 2) // 20)
-    qcy = int(((y1 + y2) / 2) // 20)
-    return f"{violation}:{zone}:{qcx}:{qcy}"
-
-
-def process_frame(frame):
-    h, w, _ = frame.shape
-    all_violations = []
-
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (0, 0), (int(0.6 * w), h), (0, 255, 0), -1)
-    cv2.rectangle(overlay, (int(0.6 * w), 0), (w, h), (0, 0, 255), -1)
-    alpha = 0.15
-    frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
-
-    cv2.putText(
-        frame,
-        "SAFE ZONE",
-        (10, 30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
-        (0, 255, 0),
-        2,
-    )
-    cv2.putText(
-        frame,
-        "HIGH RISK ZONE",
-        (int(0.6 * w) + 10, 30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
-        (0, 0, 255),
-        2,
-    )
-
-    persons = detect_ppe(frame, model)
-
-    for person in persons:
-        zone = get_person_zone(person, w)
-        at_height = is_person_at_height(person["bbox"], h)
-        violations = evaluate_ppe_rules(person, zone, at_height)
-        for sev, violation in violations:
-            reason = build_contextual_reason(violation, zone, at_height)
-            event_id = _event_id_for_person_violation(person["bbox"], zone, violation)
-            all_violations.append((sev, violation, reason, event_id))
-
-    alert = decide_alert_action(all_violations)
-
-    for person in persons:
-        x1, y1, x2, y2 = person["bbox"]
-        color = (0, 255, 0)
-        if alert == "WARNING":
-            color = (0, 255, 255)
-        elif alert == "CRITICAL":
-            color = (0, 0, 255)
-        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-
-    if alert != "INFO":
-        reasons = ", ".join([v[1] for v in all_violations])
-        cv2.putText(
-            frame,
-            f"{alert}: {reasons}",
-            (20, 40),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 0, 255),
-            3,
-        )
-
-    cv2.putText(frame, "SAFE", (w - 180, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-    cv2.putText(
-        frame,
-        "WARNING",
-        (w - 180, 55),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
-        (0, 255, 255),
-        2,
-    )
-    cv2.putText(
-        frame,
-        "CRITICAL",
-        (w - 180, 80),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
-        (0, 0, 255),
-        2,
-    )
-
-    return frame, alert, all_violations
-
 
 if __name__ == "__main__":
-    cap = cv2.VideoCapture("CVBASEDSMS\\CVBASEDSMS\\videos\\test.mp4")
+    # cap is already initialized based on args
     event_state = {}
     frame_index = 0
 
