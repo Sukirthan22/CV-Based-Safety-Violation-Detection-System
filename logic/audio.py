@@ -12,6 +12,14 @@ class AudioAlerter:
         # Initialize TTS engine in the background thread to avoid freezing the video
         engine = pyttsx3.init()
         
+        # Make the voice sound more natural (slower rate, female voice if available)
+        engine.setProperty("rate", 160)
+        voices = engine.getProperty("voices")
+        for voice in voices:
+            if "Zira" in voice.name:
+                engine.setProperty("voice", voice.id)
+                break
+        
         while True:
             message = self.q.get()
             if message is None:

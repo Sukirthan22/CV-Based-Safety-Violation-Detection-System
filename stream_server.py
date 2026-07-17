@@ -53,7 +53,7 @@ def frame_producer(source, fps, state, camera_id, mode):
             raise RuntimeError(f"Unable to open video: {source}")
 
     frame_interval = 1.0 / max(fps, 1)
-    tracker = ViolationTracker(tolerance_seconds=1.5, confirm_seconds=1.5, forget_seconds=10.0, cooldown_seconds=60.0)
+    tracker = ViolationTracker(tolerance_seconds=1.5, confirm_seconds=1.5, forget_seconds=10.0, cooldown_seconds=10.0)
     alerter = AudioAlerter()
     
     while True:
