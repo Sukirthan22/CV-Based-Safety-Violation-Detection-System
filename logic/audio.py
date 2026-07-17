@@ -20,13 +20,15 @@ class AudioAlerter:
         pygame.mixer.init()
         
         while True:
-            message = self.q.get()
-            if message is None:
+            payload = self.q.get()
+            if payload is None:
                 break
+            
+            message, lang = payload
                 
             try:
-                # Generate Tamil text-to-speech
-                tts = gTTS(text=message, lang='ta')
+                # Generate text-to-speech
+                tts = gTTS(text=message, lang=lang)
                 
                 # Save to a temporary MP3 file
                 temp_path = os.path.join(tempfile.gettempdir(), f"alert_{int(time.time())}.mp3")
@@ -52,7 +54,7 @@ class AudioAlerter:
                 
             self.q.task_done()
 
-    def process_events(self, events_to_log):
+    def process_events(self, events_to_log, lang="ta"):
         for sev, violation, reason, event_id, person_id in events_to_log:
             if sev == "CRITICAL":
                 # Parse the worker ID from event_id (e.g. "NO_HARNESS:worker_7")
@@ -61,15 +63,34 @@ class AudioAlerter:
                 except Exception:
                     worker_id = "unknown"
                 
-                if violation == "NO_HARNESS":
-                    item = "ஹார்னஸ்" # Harness
-                elif violation == "NO_HELMET":
-                    item = "ஹெல்மெட்" # Helmet
+                if lang == "ta":
+                    if violation == "NO_HARNESS":
+                        item = "ஹார்னஸ்" # Harness
+                    elif violation == "NO_HELMET":
+                        item = "ஹெல்மெட்" # Helmet
+                    else:
+                        item = "பாதுகாப்பு உபகரணம்" # Safety gear
+                    msg = f"எச்சரிக்கை: தொழிலாளி {worker_id}, {item} அணியவும்!"
                 else:
-                    item = "பாதுகாப்பு உபகரணம்" # Safety gear
+                    if violation == "NO_HARNESS":
+                        item = "harness"
+                    elif violation == "NO_HELMET":
+                        item = "helmet"
+                    else:
+                        item = "safety gear"
+                    msg = f"Worker {worker_id} is not wearing a {item}. Please wear a {item} for your safety."
                     
-                msg = f"தொழிலாளி {worker_id}, நீங்கள் {item} அணியவில்லை. உங்கள் பாதுகாப்பிற்காக தயவுசெய்து {item} அணியவும்."
-                self.q.put(msg)
+                self.q.put((msg, lang))
+
+    def stop_current_audio(self):
+        # Stop currently playing audio and clear the backlog queue
+        try:
+            if pygame.mixer.get_init():
+                pygame.mixer.music.stop()
+        except Exception:
+            pass
+        with self.q.mutex:
+            self.q.queue.clear()
 
     def stop(self):
         self.q.put(None)

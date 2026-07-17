@@ -23,6 +23,10 @@ class StreamState:
         self.frame = None
         self.alert = "INFO"
         self.updated_at = time.time()
+        self.audio_enabled = True
+        self.audio_lang = "ta"
+        self.force_audio_refresh = False
+        self.alerter = None
 
     def set_frame(self, data):
         with self.lock:
@@ -55,6 +59,7 @@ def frame_producer(source, fps, state, camera_id, mode):
     frame_interval = 1.0 / max(fps, 1)
     tracker = ViolationTracker(tolerance_seconds=1.5, confirm_seconds=1.5, forget_seconds=10.0, cooldown_seconds=10.0)
     alerter = AudioAlerter()
+    state.alerter = alerter
     
     # Clean up any dangling "Open" violations from previous crashes
     close_all_open_violations()
@@ -92,8 +97,12 @@ def frame_producer(source, fps, state, camera_id, mode):
                         violation=event[1]
                     )
 
-            if events_to_speak:
-                alerter.process_events(events_to_speak)
+            if getattr(state, "force_audio_refresh", False):
+                tracker.reset_spoken()
+                state.force_audio_refresh = False
+
+            if events_to_speak and state.audio_enabled:
+                alerter.process_events(events_to_speak, lang=state.audio_lang)
                 tracker.mark_spoken(events_to_speak)
 
             state.set_alert(alert)
@@ -109,6 +118,40 @@ def frame_producer(source, fps, state, camera_id, mode):
 
 
 class StreamHandler(BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def do_POST(self):
+        if self.path == "/config":
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length > 0:
+                post_data = self.rfile.read(content_length)
+                try:
+                    data = json.loads(post_data.decode('utf-8'))
+                    if "audio_enabled" in data:
+                        self.server.state.audio_enabled = data["audio_enabled"]
+                        if not data["audio_enabled"] and self.server.state.alerter:
+                            self.server.state.alerter.stop_current_audio()
+                    if "audio_lang" in data:
+                        # If language changes, or we enable audio, reset the cooldowns
+                        self.server.state.audio_lang = data["audio_lang"]
+                        self.server.state.force_audio_refresh = True
+                        if self.server.state.alerter:
+                            self.server.state.alerter.stop_current_audio()
+                except Exception as e:
+                    print("Error parsing config payload:", e)
+            
+            self.send_response(200)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status": "ok"}')
+            return
+            
     def do_GET(self):
         if self.path == "/status":
             alert, updated_at = self.server.state.get_status()

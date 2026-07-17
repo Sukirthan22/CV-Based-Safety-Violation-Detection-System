@@ -98,3 +98,7 @@ class ViolationTracker:
         for _, _, _, eid, _ in events:
             if eid in self.states:
                 self.states[eid]["last_spoken"] = now
+
+    def reset_spoken(self):
+        for eid in self.states:
+            self.states[eid]["last_spoken"] = None

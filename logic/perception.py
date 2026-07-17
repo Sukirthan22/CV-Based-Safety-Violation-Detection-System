@@ -79,7 +79,7 @@ def _has_harness(person_bbox, harness_bboxes):
     return False
 
 
-def detect_ppe(frame, model, conf=0.40):
+def detect_ppe(frame, model, conf=0.30):
     results = model.track(frame, conf=conf, persist=True, tracker="bytetrack.yaml", verbose=False)
     boxes = results[0].boxes
 
