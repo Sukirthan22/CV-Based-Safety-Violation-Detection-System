@@ -78,7 +78,7 @@ class ViolationTracker:
                     smoothed_by_person[pid] = []
                 smoothed_by_person[pid].append((state["severity"], state["violation"], state["reason"], eid))
 
-                required_time = 3.5 if state["violation"] == "NO_HARNESS" else self.confirm_seconds
+                required_time = 3.0 if state["violation"] == "NO_HARNESS" else self.confirm_seconds
                 if (now - state["first_seen"]) >= required_time:
                     if not state.get("is_logged_as_started"):
                         events_started.append((state["severity"], state["violation"], state["reason"], eid, state["person_id"]))
