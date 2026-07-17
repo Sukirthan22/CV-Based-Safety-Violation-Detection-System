@@ -59,11 +59,16 @@ class ViolationTracker:
                 if pid not in smoothed_by_person:
                     smoothed_by_person[pid] = []
                 smoothed_by_person[pid].append((state["severity"], state["violation"], state["reason"], eid))
-                
-                # Check if it should be logged
-                if (now - state["first_seen"]) >= self.confirm_seconds:
+
+                required_time = 3.5 if state["violation"] == "NO_HARNESS" else self.confirm_seconds
+                if (now - state["first_seen"]) >= required_time:
                     if state["last_logged"] is None or (now - state["last_logged"]) >= self.cooldown_seconds:
                         events_to_log.append((state["severity"], state["violation"], state["reason"], eid))
+
+                # Check if it should be logged
+                # if (now - state["first_seen"]) >= self.confirm_seconds:
+                #     if state["last_logged"] is None or (now - state["last_logged"]) >= self.cooldown_seconds:
+                #         events_to_log.append((state["severity"], state["violation"], state["reason"], eid))
                         
         return smoothed_by_person, events_to_log
         

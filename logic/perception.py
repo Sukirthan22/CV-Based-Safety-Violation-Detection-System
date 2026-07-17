@@ -63,11 +63,12 @@ def _has_helmet(person_bbox, helmet_bboxes):
 
 def _has_harness(person_bbox, harness_bboxes):
     px1, py1, px2, py2 = person_bbox
+
     torso_region = (
         px1,
-        py1 + int(0.25 * (py2 - py1)),
+        py1 + int(0.20 * (py2 - py1)),
         px2,
-        py1 + int(0.85 * (py2 - py1)),
+        py1 + int(0.80 * (py2 - py1)),
     )
     for harness_bbox in harness_bboxes:
         c = _box_center(harness_bbox)
@@ -78,7 +79,7 @@ def _has_harness(person_bbox, harness_bboxes):
     return False
 
 
-def detect_ppe(frame, model, conf=0.25):
+def detect_ppe(frame, model, conf=0.40):
     results = model.track(frame, conf=conf, persist=True, tracker="bytetrack.yaml", verbose=False)
     boxes = results[0].boxes
 
@@ -93,12 +94,22 @@ def detect_ppe(frame, model, conf=0.25):
         bbox = _to_bbox(box.xyxy[0])
         track_id = int(box.id[0].item()) if (hasattr(box, 'id') and box.id is not None) else None
 
-        if cls in person_ids:
-            person_bboxes.append((bbox, track_id))
-        elif cls in helmet_ids:
-            helmet_bboxes.append(bbox)
-        elif cls in harness_ids:
-            harness_bboxes.append(bbox)
+        box_conf = float(box.conf[0]) # Get the confidence of this specific box
+
+        if cls in harness_ids:
+            harness_bboxes.append(bbox) # Harnesses use the global 0.15 threshold
+        elif cls in person_ids and box_conf >= 0.25:
+            person_bboxes.append((bbox, track_id)) # Persons still require 0.25
+        elif cls in helmet_ids and box_conf >= 0.25:
+            helmet_bboxes.append(bbox) # Helmets still require 0.25
+
+
+        # if cls in person_ids:
+        #     person_bboxes.append((bbox, track_id))
+        # elif cls in helmet_ids:
+        #     helmet_bboxes.append(bbox)
+        # elif cls in harness_ids:
+        #     harness_bboxes.append(bbox)
 
     persons = []
     for i, (person_bbox, track_id) in enumerate(person_bboxes):
