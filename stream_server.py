@@ -10,11 +10,11 @@ import cv2
 
 from logic.logger import log_violation
 from logic.pipeline import process_frame
+from logic.tracker import ViolationTracker
+from logic.audio import AudioAlerter
 
 
 BASE_DIR = Path(__file__).resolve().parent
-
-from logic.tracker import ViolationTracker
 
 
 class StreamState:
@@ -54,6 +54,7 @@ def frame_producer(source, fps, state, camera_id, mode):
 
     frame_interval = 1.0 / max(fps, 1)
     tracker = ViolationTracker(tolerance_seconds=1.5, confirm_seconds=1.5, forget_seconds=10.0, cooldown_seconds=60.0)
+    alerter = AudioAlerter()
     
     while True:
         start = time.time()
@@ -77,6 +78,7 @@ def frame_producer(source, fps, state, camera_id, mode):
                     severity=event[0],
                 )
             tracker.mark_logged(events_to_log)
+            alerter.process_events(events_to_log)
 
         state.set_alert(alert)
         ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])

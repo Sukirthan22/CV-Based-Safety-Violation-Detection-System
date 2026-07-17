@@ -6,9 +6,9 @@ import cv2
 
 from logic.logger import log_violation
 from logic.pipeline import process_frame
-
-
 from logic.tracker import ViolationTracker
+from logic.audio import AudioAlerter
+
 
 parser = argparse.ArgumentParser(description="PPE Monitoring System")
 parser.add_argument(
@@ -44,6 +44,7 @@ else:
 if __name__ == "__main__":
     # cap is already initialized based on args
     tracker = ViolationTracker(tolerance_seconds=1.5, confirm_seconds=1.5, forget_seconds=10.0, cooldown_seconds=60.0)
+    alerter = AudioAlerter()
 
     while True:
         ret, frame = cap.read()
@@ -60,6 +61,7 @@ if __name__ == "__main__":
                     severity=event[0],
                 )
             tracker.mark_logged(events_to_log)
+            alerter.process_events(events_to_log)
             print("LOGGED:", [(v[0], v[1], v[3]) for v in events_to_log])
 
         cv2.imshow("PPE Monitor", frame)
